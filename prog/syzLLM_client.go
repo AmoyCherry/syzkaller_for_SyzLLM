@@ -54,7 +54,7 @@ type SyzLLMResponse struct {
 }
 
 func enableCalls(program *Prog, table *ChoiceTable) {
-	for _, call := range program.Calls {
+	for idx, call := range program.Calls {
 		if !table.Enabled(call.Meta.ID) {
 			table.runs[call.Meta.ID] = make([]int32, max(1, len(table.target.Syscalls)))
 			for i := range table.runs[call.Meta.ID] {
@@ -63,6 +63,14 @@ func enableCalls(program *Prog, table *ChoiceTable) {
 			table.noGenerateCalls[call.Meta.ID] = true
 			// remove previous calls
 		}
+		if call.Props.Rerun > 0 && call.Props.FailNth > 0 {
+			if idx%2 == 0 {
+				call.Props.Rerun = 0
+			} else {
+				call.Props.FailNth = 0
+			}
+		}
+
 	}
 }
 
@@ -361,21 +369,20 @@ func GetAddrGeneratorInstance() *AddrGenerator {
 }
 
 type AddrGenerator struct {
-	mu          sync.RWMutex
 	AddrCounter map[string]uint64
 	AddrBase    map[string]uint64
 }
 
-func (a *AddrGenerator) ResetCounter() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for key := range a.AddrCounter {
-		a.AddrCounter[key] = 0
+func CopyCounter() map[string]uint64 {
+	counter := make(map[string]uint64)
+	addrGenerator := GetAddrGeneratorInstance()
+	for key, val := range addrGenerator.AddrCounter {
+		counter[key] = val
 	}
+	return counter
 }
 
 func NormalizeArgs(program *Prog) {
-	GetAddrGeneratorInstance().ResetCounter()
 	for i, call := range program.Calls {
 		fields := call.Meta.Args
 		for j, _arg := range call.Args {
@@ -403,12 +410,14 @@ func TryNormalizeArgs(program *Prog) {
 type ArgReplacer struct {
 	currentCallName string
 	InitAddrCnt     int
+	AddrCounter     map[string]uint64
 }
 
-func NewArgReplacer(callName string, args ...bool) *ArgReplacer {
+func NewArgReplacer(callName string) *ArgReplacer {
 	argReplacer := new(ArgReplacer)
 	argReplacer.currentCallName = callName
 	argReplacer.InitAddrCnt = 0
+	argReplacer.AddrCounter = CopyCounter()
 	return argReplacer
 }
 
@@ -522,7 +531,7 @@ func (a *ArgReplacer) GenerateGroupArg(groupArg *GroupArg, fieldType Type) Arg {
 }
 
 func (a *ArgReplacer) GeneratePtrArg(ptrArg *PointerArg, fieldType Type) Arg {
-	addr := GetAddr(a.currentCallName)
+	addr := a.GetAddr()
 	if addr != 0 {
 		ptrArg.Address = addr
 	}
@@ -546,23 +555,22 @@ func (a *ArgReplacer) GeneratePtrArg(ptrArg *PointerArg, fieldType Type) Arg {
 	return ptrArg
 }
 
+func (a *ArgReplacer) GetAddr() uint64 {
+	cnt, ok := a.AddrCounter[a.currentCallName]
+	if !ok {
+		return 0
+	}
+	a.AddrCounter[a.currentCallName] += 1
+
+	return GetAddrGeneratorInstance().AddrBase[a.currentCallName] + AddrSameCallStep*cnt
+}
+
 const (
 	// defined in encoding.go
 	BaseAddr         = uint64(0x0)
 	AddrSameCallStep = uint64(0x400)
 	AddrDiffCallStep = AddrSameCallStep * 4
 )
-
-func GetAddr(callName string) uint64 {
-	addrGenerator := GetAddrGeneratorInstance()
-	cnt, ok := addrGenerator.AddrCounter[callName]
-	if !ok {
-		return 0
-	}
-	addrGenerator.AddrCounter[callName] += 1
-
-	return addrGenerator.AddrBase[callName] + AddrSameCallStep*cnt
-}
 
 func ConvertAnyBlob(s string) string {
 	re := regexp.MustCompile(`@ANYBLOB="([a-zA-Z0-9]+)"`)

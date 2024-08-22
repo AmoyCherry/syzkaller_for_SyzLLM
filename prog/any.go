@@ -156,7 +156,10 @@ func (target *Target) squashPtr(arg *PointerArg) {
 	arg.ref = newType.ref()
 	arg.Res = MakeGroupArg(newType.Elem, DirIn, elems)
 	if size := arg.Res.Size(); size != size0 {
-		panic(fmt.Sprintf("squash changed size %v->%v for %v", size0, size, res0.Type()))
+		// IF SyzLLM
+		//panic(fmt.Sprintf("squash changed size %v->%v for %v", size0, size, res0.Type()))
+		arg.Res = res0
+		// ENDIF
 	}
 }
 
@@ -173,6 +176,11 @@ func (target *Target) squashPtrImpl(a Arg, elems *[]Arg) {
 	case *UnionArg:
 		if !arg.Type().Varlen() {
 			pad = arg.Size() - arg.Option.Size()
+			// IF SyzLLM
+			if arg.Size() < arg.Option.Size() {
+				pad = 0
+			}
+			// ENDIF
 		}
 		target.squashPtrImpl(arg.Option, elems)
 	case *DataArg:

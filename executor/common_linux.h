@@ -2034,7 +2034,10 @@ static long syz_usbip_server_init(volatile long a0)
 
 	int socket_pair[2];
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, socket_pair))
-		fail("syz_usbip_server_init: socketpair failed");
+	    // IF SyzLLM
+		//fail("syz_usbip_server_init: socketpair failed");
+		return 0;
+		// ENDIF
 
 	int client_fd = socket_pair[0];
 	int server_fd = socket_pair[1];

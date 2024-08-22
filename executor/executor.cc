@@ -1267,7 +1267,10 @@ void execute_call(thread_t* th)
 	th->soft_fail_state = false;
 	if (th->call_props.fail_nth > 0) {
 		if (th->call_props.rerun > 0)
-			fail("both fault injection and rerun are enabled for the same call");
+		// IF SyzLLM
+		    //fail("both fault injection and rerun are enabled for the same call");
+		    th->call_props.rerun = 0;
+		// ENDIF
 		fail_fd = inject_fault(th->call_props.fail_nth);
 		th->soft_fail_state = true;
 	}
