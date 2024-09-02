@@ -11,9 +11,11 @@ import (
 	"io"
 	"math/rand"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -256,6 +258,8 @@ func RunManager(cfg *mgrconfig.Config) {
 
 			log.Logf(0, "VMs %v, executed %v, cover %v, signal %v/%v, crashes %v, repro %v, triageQLen %v",
 				numFuzzing, executed, corpusCover, corpusSignal, maxSignal, crashes, numReproducing, triageQLen)
+
+			SendCoverToSyzLLM(corpusCover)
 		}
 	}()
 
@@ -277,6 +281,43 @@ func RunManager(cfg *mgrconfig.Config) {
 	}
 	mgr.vmLoop()
 }
+
+// IF SyzLLM
+var (
+	_clientInstance *http.Client
+	_once           sync.Once
+)
+
+// getClientInstance initializes a single instance of http.Client with appropriate settings.
+func getClientInstance() *http.Client {
+	_once.Do(func() {
+		_clientInstance = &http.Client{
+			Transport: &http.Transport{
+				MaxIdleConns:       10,
+				IdleConnTimeout:    30 * time.Second,
+				DisableCompression: true,
+			},
+			Timeout: 15 * time.Second,
+		}
+	})
+	return _clientInstance
+}
+
+const URL string = "http://10.211.55.4:6678/cover"
+
+func SendCoverToSyzLLM(cover uint64) {
+	numberBytes := []byte(strconv.Itoa(int(cover)))
+	// Make the HTTP POST request.
+	client := getClientInstance()
+	resp, err := client.Post(URL, "text/plain", bytes.NewBuffer(numberBytes))
+	if err != nil {
+		//fmt.Println("Error making request when sending cover to SyzLLM:", err)
+		return
+	}
+	resp.Body.Close()
+}
+
+// ENDIF
 
 func (mgr *Manager) initBench() {
 	f, err := os.OpenFile(*flagBench, os.O_WRONLY|os.O_CREATE|os.O_EXCL, osutil.DefaultFilePerm)

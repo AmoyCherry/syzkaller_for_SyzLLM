@@ -47,7 +47,7 @@ func (p *Prog) Mutate(rs rand.Source, ncalls int, ct *ChoiceTable, noMutate map[
 			ok = ctx.splice()
 		case r.nOutOf(20, 31):
 			//ok = ctx.insertCall()
-			if len(p.Calls) < 5 {
+			if len(p.Calls) < 6 {
 				ok = ctx.insertCall()
 			} else {
 				ok = ctx.insertCall_SyzLLM()
@@ -480,6 +480,12 @@ func (t *ArrayType) mutate(r *randGen, s *state, arg Arg, ctx ArgCtx) (calls []*
 
 func (t *PtrType) mutate(r *randGen, s *state, arg Arg, ctx ArgCtx) (calls []*Call, retry, preserve bool) {
 	a := arg.(*PointerArg)
+	// IF SyzLLM
+	// we may have nil pointer in calls from SyzLLM: &(0x7f000003c400)=nil
+	if a.Res == nil {
+		return
+	}
+	// ENDIF
 	if r.oneOf(1000) {
 		removeArg(a.Res)
 		index := r.rand(len(r.target.SpecialPointers))
