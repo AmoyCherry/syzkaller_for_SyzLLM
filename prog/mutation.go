@@ -24,7 +24,11 @@ const maxBlobLen = uint64(100 << 10)
 // ct:          ChoiceTable for syscalls.
 // noMutate:    Set of IDs of syscalls which should not be mutated.
 // corpus:      The entire corpus, including original program p.
-func (p *Prog) Mutate(rs rand.Source, ncalls int, ct *ChoiceTable, noMutate map[int]bool, corpus []*Prog) {
+func (p *Prog) Mutate(rs rand.Source, ncalls int, ct *ChoiceTable, noMutate map[int]bool, corpus []*Prog) (isSyzLLM bool, manager *SyzLLMCallsManager) {
+	// IF SyzLLM
+	isSyzLLM = false
+	manager = nil
+	// ENDIF
 	r := newRand(p.Target, rs)
 	if ncalls < len(p.Calls) {
 		ncalls = len(p.Calls)
@@ -50,7 +54,13 @@ func (p *Prog) Mutate(rs rand.Source, ncalls int, ct *ChoiceTable, noMutate map[
 			if len(p.Calls) < 6 {
 				ok = ctx.insertCall()
 			} else {
-				ok = ctx.insertCall_SyzLLM()
+				ok, manager = ctx.requestNewCallsFromSyzLLM()
+				if !ok {
+					ctx.insertCall()
+				} else {
+					isSyzLLM = true
+				}
+
 			}
 		case r.nOutOf(10, 11):
 			ok = ctx.mutateArg()
@@ -63,6 +73,8 @@ func (p *Prog) Mutate(rs rand.Source, ncalls int, ct *ChoiceTable, noMutate map[
 	if got := len(p.Calls); got < 1 || got > ncalls {
 		panic(fmt.Sprintf("bad number of calls after mutation: %v, want [1, %v]", got, ncalls))
 	}
+
+	return isSyzLLM, manager
 }
 
 // Internal state required for performing mutations -- currently this matches
@@ -162,22 +174,30 @@ func (ctx *mutator) insertCall() bool {
 	return true
 }
 
-func (ctx *mutator) insertCall_SyzLLM() bool {
+// IF SyzLLM
+func (ctx *mutator) requestNewCallsFromSyzLLM() (bool, *SyzLLMCallsManager) {
 	p, r := ctx.p, ctx.r
 	if len(p.Calls) >= ctx.ncalls {
-		return false
+		return false, nil
 	}
 	idx := r.biasedRand(len(p.Calls)+1, 5)
-	calls := ctx.requestNewCallAsync(p, idx, ctx.ct)
-	if len(calls) == len(p.Calls) || len(calls) <= 0 {
-		return false
+	manager := ctx.requestNewCallAsync(p, idx)
+	ok := true
+	if manager == nil {
+		ok = false
 	}
-	p.Calls = calls
-	for len(p.Calls) > ctx.ncalls {
-		p.RemoveCall(idx)
+	return ok, manager
+}
+
+func (p *Prog) InsertCall_SyzLLM(call string, manager *SyzLLMCallsManager, ct *ChoiceTable) bool {
+	p.Calls = InsertNewCall(p, manager.InsertPosition, ct, manager.MaskedSyscallList, call)
+	for len(p.Calls) > manager.NCalls {
+		p.RemoveCall(manager.InsertPosition)
 	}
 	return true
 }
+
+// ENDIF
 
 // Removes a random call from program.
 func (ctx *mutator) removeCall() bool {

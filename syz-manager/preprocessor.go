@@ -48,7 +48,7 @@ func PreprocessAllCorpora(manager *Manager, preprocessorType PreprocessorType) {
 		fmt.Println("filepath.Walk Error:", err)
 	}
 	log.Fatalf("preprocessing exit!\n"+
-		"programs cnt: %v \n"+"calls cnt: %v \n"+"replaced args cnt: %v \n"+"panic cnt: %v \n"+"max sequence length: %v \n"+"broken progs: %v\n"+"Any: %v\n", logCollector.TotalProgramsCnt, logCollector.TotalCallsCnt, logCollector.TotalReplacedArgsCnt, logCollector.TotalPanicCnt, logCollector.MaxProgramLength, logCollector.BrokenProgCNT, logCollector.Cnt)
+		"programs cnt: %v \n"+"calls cnt: %v \n"+"replaced args cnt: %v \n"+"panic call cnt: %v \n"+"max sequence length: %v \n"+"broken progs: %v\n"+"Any: %v\n", logCollector.TotalProgramsCnt, logCollector.TotalCallsCnt, logCollector.TotalReplacedArgsCnt, logCollector.TotalPanicCnt, logCollector.MaxProgramLength, logCollector.BrokenProgCNT, logCollector.Cnt)
 }
 
 type Preprocessor interface {
@@ -179,18 +179,19 @@ func (p *PAllocateConstant) Replace() {
 		p.logCollector.CalcMaxProgramLength(len(program.Calls))
 		p.currentProg = string(rec.Val[:])
 
-		GetAddrGeneratorInstance().ResetCounter()
+		//GetAddrGeneratorInstance().ResetCounter()
 
 		for i, call := range program.Calls {
 			p.logCollector.TotalCallsCnt += 1
-			//GetAddrGeneratorInstance().ResetCounter()
+			GetAddrGeneratorInstance().ResetCounter()
 			fields := call.Meta.Args
 			for j, _arg := range call.Args {
 				switch arg := _arg.(type) {
 				case *proglib.ResultArg:
 					continue
 				default:
-					p.currentCallName = call.Meta.Name
+					p.currentCallName = call.Meta.CallName
+					program.Calls[i].Meta.Name = program.Calls[i].Meta.CallName + "$SyzLLM"
 					program.Calls[i].Args[j] = p.DFSArgs(arg, fields[j])
 				}
 			}
@@ -250,8 +251,8 @@ func (p *PAllocateConstant) GenerateDataArg(dataArg *proglib.DataArg, fieldType 
 
 // GenerateConstArg some of const values are choose from UnionType.Fields by ConstArg.Index, seems a type of flags
 func (p *PAllocateConstant) GenerateConstArg(constArg *proglib.ConstArg, fieldType proglib.Type, fieldName string) proglib.Arg {
-	const FD = ^uint64(0)
-	const NUM = 0x111
+	const FD = uint64(0)
+	const NUM = 0x1
 
 	switch fieldType.(type) {
 	case *proglib.FlagsType:

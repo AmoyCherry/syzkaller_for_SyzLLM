@@ -49,8 +49,8 @@ type SyscallData struct {
 }
 
 type SyzLLMResponse struct {
-	State   int
-	Syscall string
+	State    int
+	Syscalls []string
 }
 
 func enableCalls(program *Prog, table *ChoiceTable) {
@@ -74,42 +74,14 @@ func enableCalls(program *Prog, table *ChoiceTable) {
 	}
 }
 
-func (ctx *mutator) requestNewCallAsync(program *Prog, insertPosition int, choiceTable *ChoiceTable) []*Call {
-	normalizedMaskedSyscallList, maskedSyscallList := addMaskToCalls(program, insertPosition)
-	jsonData, err := json.Marshal(SyscallData{Syscalls: normalizedMaskedSyscallList})
-	if err != nil {
-		fmt.Println("Error marshaling JSON:", err)
-		return program.Calls
-	}
+type SyzLLMCallsManager struct {
+	MaskedSyscallList []string
+	InsertPosition    int
+	NewCalls          []string
+	NCalls            int
+}
 
-	var serviceConfig = getServerConfig()
-	url := fmt.Sprintf("http://%s:%s", serviceConfig.Host, serviceConfig.Port)
-	client := GetClient()
-	resp, err := client.SendPostRequest(url, jsonData)
-	if err != nil {
-		fmt.Println("Error reading response:", err)
-		return program.Calls
-	}
-	defer resp.Body.Close()
-
-	responseByte, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println("Error reading response:", err)
-		return program.Calls
-	}
-
-	//var syzLLMResponse SyzLLMResponse
-	syzLLMResponse := SyzLLMResponse{-1, ""}
-	err = json.Unmarshal(responseByte, &syzLLMResponse)
-	if err != nil {
-		fmt.Println("Error unmarshaling response:", err)
-		return program.Calls
-	}
-	if syzLLMResponse.State != 0 {
-		return program.Calls
-	}
-
-	newCall := syzLLMResponse.Syscall
+func InsertNewCall(program *Prog, insertPosition int, choiceTable *ChoiceTable, maskedSyscallList []string, newCall string) []*Call {
 	calls := ParseResource(newCall, maskedSyscallList, insertPosition)
 	newSyscallSequence := ""
 	for _, call := range calls {
@@ -127,6 +99,53 @@ func (ctx *mutator) requestNewCallAsync(program *Prog, insertPosition int, choic
 	enableCalls(newProg, choiceTable)
 
 	return newProg.Calls
+}
+
+func (ctx *mutator) requestNewCallAsync(program *Prog, insertPosition int) *SyzLLMCallsManager {
+	normalizedMaskedSyscallList, maskedSyscallList := addMaskToCalls(program, insertPosition)
+	jsonData, err := json.Marshal(SyscallData{Syscalls: normalizedMaskedSyscallList})
+	if err != nil {
+		fmt.Println("Error marshaling JSON:", err)
+		return nil
+	}
+
+	var serviceConfig = getServerConfig()
+	url := fmt.Sprintf("http://%s:%s", serviceConfig.Host, serviceConfig.Port)
+	client := GetClient()
+	resp, err := client.SendPostRequest(url, jsonData)
+	if err != nil {
+		fmt.Println("Error reading response:", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	responseByte, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Error reading response:", err)
+		return nil
+	}
+
+	//var syzLLMResponse SyzLLMResponse
+	syzLLMResponse := SyzLLMResponse{-1, nil}
+	err = json.Unmarshal(responseByte, &syzLLMResponse)
+	if err != nil {
+		fmt.Println("Error unmarshaling response:", err)
+		return nil
+	}
+	if syzLLMResponse.State != 0 {
+		return nil
+	}
+
+	newCalls := syzLLMResponse.Syscalls
+
+	syzLLMCallsManager := &SyzLLMCallsManager{
+		MaskedSyscallList: maskedSyscallList,
+		InsertPosition:    insertPosition,
+		NewCalls:          newCalls,
+		NCalls:            ctx.ncalls,
+	}
+
+	return syzLLMCallsManager
 }
 
 type Client struct {
