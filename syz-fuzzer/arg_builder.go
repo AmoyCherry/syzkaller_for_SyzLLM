@@ -10,7 +10,10 @@ import (
 	"strings"
 )
 
+// BuildTable build AddrGenerator
+// load addrs without $desc
 func BuildTable(target *prog.Target) {
+	const AddrPath = "/root/data/addr.txt"
 	file, err := os.Open(AddrPath)
 	if err != nil {
 		log.Fatal(err)
@@ -51,16 +54,5 @@ func BuildTable(target *prog.Target) {
 	addrGenerator.AddrBase["[UNK]"] = maxAddr + 0x80
 	addrGenerator.AddrCounter["[UNK]"] = 0
 
-	BuildCallMeta(target)
-
 	log.Logf(0, "Build arg table done: %v", addrCnt)
-}
-
-const AddrPath = "/root/data/addr.txt"
-
-func BuildCallMeta(target *prog.Target) {
-	callMetaInstance := prog.GetCallMetaInstance()
-	for _, s := range target.Syscalls {
-		callMetaInstance.Set(s.Name, s)
-	}
 }
