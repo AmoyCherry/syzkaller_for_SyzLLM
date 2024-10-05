@@ -99,7 +99,7 @@ func InsertNewCall(program *Prog, insertPosition int, choiceTable *ChoiceTable, 
 	newSyscallBytes := []byte(newSyscallSequence)
 	newProg, err := program.Target.Deserialize(newSyscallBytes, NonStrict)
 	if err != nil {
-		log.Fatalf("Deserialize: %v", err)
+		return program.Calls
 	}
 
 	enableCalls(newProg, choiceTable)
