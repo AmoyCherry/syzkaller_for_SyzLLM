@@ -51,7 +51,7 @@ func (p *Prog) Mutate(rs rand.Source, ncalls int, ct *ChoiceTable, noMutate map[
 			ok = ctx.splice()
 		case r.nOutOf(20, 31):
 			//ok = ctx.insertCall()
-			if len(p.Calls) < 6 {
+			if len(p.Calls) < 6 || r.Int()%2 == 0 {
 				ok = ctx.insertCall()
 			} else {
 				ok, manager = ctx.requestNewCallsFromSyzLLM()
@@ -190,7 +190,7 @@ func (ctx *mutator) requestNewCallsFromSyzLLM() (bool, *SyzLLMCallsManager) {
 }
 
 func (p *Prog) InsertCall_SyzLLM(call string, manager *SyzLLMCallsManager, ct *ChoiceTable) bool {
-	p.Calls = InsertNewCall(p, manager.InsertPosition, ct, manager.MaskedSyscallList, call)
+	p.Calls = InsertNewCall(p, manager.InsertPosition, ct, manager.CopyMaskedSyscallList(), call)
 	for len(p.Calls) > manager.NCalls {
 		p.RemoveCall(manager.InsertPosition)
 	}
