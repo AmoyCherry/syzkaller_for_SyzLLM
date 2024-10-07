@@ -251,7 +251,7 @@ func (p *PAllocateConstant) GenerateDataArg(dataArg *proglib.DataArg, fieldType 
 // GenerateConstArg some of const values are choose from UnionType.Fields by ConstArg.Index, seems a type of flags
 func (p *PAllocateConstant) GenerateConstArg(constArg *proglib.ConstArg, fieldType proglib.Type, fieldName string) proglib.Arg {
 	const FD = ^uint64(0)
-	const NUM = 0x111
+	const NUM = 0x1
 
 	switch fieldType.(type) {
 	case *proglib.FlagsType:
