@@ -226,7 +226,7 @@ func (p *PAllocateConstant) DFSArgs(arg proglib.Arg, field proglib.Field) progli
 // some of buffer values are choose from BufferType.Values, seems a type of flags
 func (p *PAllocateConstant) GenerateDataArg(dataArg *proglib.DataArg, fieldType proglib.Type) proglib.Arg {
 	const Path = "./file0\x00"
-	const BufferSize = 0x400
+	const BufferSize = 0x40
 	data := make([]byte, 0)
 
 	if dataArg.ArgCommon.Dir() == proglib.DirOut {
