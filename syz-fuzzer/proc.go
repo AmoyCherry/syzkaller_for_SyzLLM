@@ -102,7 +102,7 @@ func (proc *Proc) loop() {
 }
 
 func (proc *Proc) executeMutatedProgram(p *prog.Prog, ct *prog.ChoiceTable, isSyzLLM bool, callsManager *prog.SyzLLMCallsManager) {
-	if isSyzLLM {
+	if isSyzLLM && callsManager != nil {
 		calls := callsManager.NewCalls
 		for _, call := range calls {
 			tempP := p.Clone()
