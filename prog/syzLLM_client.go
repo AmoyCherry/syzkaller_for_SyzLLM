@@ -85,12 +85,26 @@ func (ctx *mutator) requestNewCallAsync(program *Prog, insertPosition int, choic
 	var serviceConfig = getServerConfig()
 	url := fmt.Sprintf("http://%s:%s", serviceConfig.Host, serviceConfig.Port)
 	client := GetClient()
-	resp, err := client.SendPostRequest(url, jsonData)
-	if err != nil {
-		fmt.Println("Error reading response:", err)
-		return program.Calls
+	//resp, err := client.SendPostRequest(url, jsonData)
+	//if err != nil {
+	//	fmt.Println("Error reading response:", err)
+	//	return program.Calls
+	//}
+	//defer resp.Body.Close()
+
+	var resp *http.Response
+	responseChan, errorChan := client.SendPostRequestAsync(url, jsonData)
+	select {
+	case respC := <-responseChan:
+		if respC != nil {
+			resp = respC
+		}
+	case err := <-errorChan:
+		if err != nil {
+			fmt.Println("Error reading response:", err)
+			return program.Calls
+		}
 	}
-	defer resp.Body.Close()
 
 	responseByte, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -144,6 +158,33 @@ func GetClient() *Client {
 		})
 	}
 	return instance
+}
+
+func (c *Client) SendPostRequestAsync(url string, jsonData []byte) (<-chan *http.Response, <-chan error) {
+	responseChan := make(chan *http.Response, 1)
+	errorChan := make(chan error, 1)
+
+	go func() {
+		defer close(responseChan)
+		defer close(errorChan)
+
+		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+		if err != nil {
+			errorChan <- fmt.Errorf("error creating request: %w", err)
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := c.client.Do(req)
+		if err != nil {
+			errorChan <- fmt.Errorf("error executing request: %w", err)
+			return
+		}
+
+		responseChan <- resp
+	}()
+
+	return responseChan, errorChan
 }
 
 func (c *Client) SendPostRequest(url string, jsonData []byte) (*http.Response, error) {
