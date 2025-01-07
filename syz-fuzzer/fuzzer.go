@@ -302,6 +302,10 @@ func main() {
 		fuzzer.execOpts.Flags |= ipc.FlagEnableCoverageFilter
 	}
 
+	// 1. create dummy prog;
+	// 2. create RequestCall() in mutation.go;
+	// 3. call prog.RequestCall() here
+
 	log.Logf(0, "starting %v fuzzer processes", *flagProcs)
 	for pid := 0; pid < *flagProcs; pid++ {
 		proc, err := newProc(fuzzer, pid)
