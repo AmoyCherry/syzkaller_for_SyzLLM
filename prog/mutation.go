@@ -5,9 +5,13 @@ package prog
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
+	"github.com/google/syzkaller/pkg/log"
+	"io"
 	"math"
 	"math/rand"
+	"net/http"
 	"sort"
 
 	"github.com/google/syzkaller/pkg/image"
@@ -62,6 +66,60 @@ func (p *Prog) Mutate(rs rand.Source, ncalls int, ct *ChoiceTable, noMutate map[
 	p.debugValidate()
 	if got := len(p.Calls); got < 1 || got > ncalls {
 		panic(fmt.Sprintf("bad number of calls after mutation: %v, want [1, %v]", got, ncalls))
+	}
+}
+
+func (p *Prog) RequestAndVerifyCall() {
+	for {
+		serverIP := ""
+		serverPort := ""
+		serverUrl := fmt.Sprintf("http://%s:%s", serverIP, serverPort)
+
+		client := GetClient()
+		var resp *http.Response
+		responseChan, errorChan := client.SendPostRequestAsync(serverUrl, make([]byte, 0))
+		select {
+		case respC := <-responseChan:
+			if respC != nil {
+				resp = respC
+			}
+		case err := <-errorChan:
+			if err != nil {
+				log.Fatalf("Error reading response:", err)
+			}
+		}
+
+		responseByte, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatalf("Error reading response:", err)
+		}
+
+		syzLLMResponse := SyzLLMResponse{-1, ""}
+		err = json.Unmarshal(responseByte, &syzLLMResponse)
+		if err != nil || syzLLMResponse.State != 0 {
+			log.Fatalf("Wrong response:", err)
+		}
+
+		if syzLLMResponse.State == 999 {
+			break
+		}
+
+		newCall := syzLLMResponse.Syscall
+		maskedSyscallList := make([]string, 1)
+		maskedSyscallList[0] = "[MASK]"
+		calls := ParseResource(newCall, maskedSyscallList, 0)
+		newSyscallSequence := ""
+		for _, call := range calls {
+			if len(newSyscallSequence) > 0 {
+				newSyscallSequence += "\n"
+			}
+			newSyscallSequence += call
+		}
+		newSyscallBytes := []byte(newSyscallSequence)
+		_, err = p.Target.Deserialize(newSyscallBytes, NonStrict)
+		if err != nil {
+			log.Logf(0, newCall)
+		}
 	}
 }
 
