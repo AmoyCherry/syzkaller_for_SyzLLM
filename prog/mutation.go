@@ -4,15 +4,15 @@
 package prog
 
 import (
+	"bufio"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"github.com/google/syzkaller/pkg/log"
-	"io"
 	"math"
 	"math/rand"
-	"net/http"
+	"os"
 	"sort"
+	"strings"
 
 	"github.com/google/syzkaller/pkg/image"
 )
@@ -70,41 +70,25 @@ func (p *Prog) Mutate(rs rand.Source, ncalls int, ct *ChoiceTable, noMutate map[
 }
 
 func (p *Prog) RequestAndVerifyCall() {
+	file, err := os.Open("/root/data/vocab.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+
 	for {
-		serverIP := ""
-		serverPort := ""
-		serverUrl := fmt.Sprintf("http://%s:%s", serverIP, serverPort)
-
-		client := GetClient()
-		var resp *http.Response
-		responseChan, errorChan := client.SendPostRequestAsync(serverUrl, make([]byte, 0))
-		select {
-		case respC := <-responseChan:
-			if respC != nil {
-				resp = respC
-			}
-		case err := <-errorChan:
-			if err != nil {
-				log.Fatalf("Error reading response:", err)
-			}
-		}
-
-		responseByte, err := io.ReadAll(resp.Body)
+		line, err := reader.ReadString('\n')
 		if err != nil {
-			log.Fatalf("Error reading response:", err)
+			if err.Error() == "EOF" {
+				break
+			}
+			log.Fatal(err)
 		}
+		line = strings.TrimSuffix(line, "\n")
 
-		syzLLMResponse := SyzLLMResponse{-1, ""}
-		err = json.Unmarshal(responseByte, &syzLLMResponse)
-		if err != nil || syzLLMResponse.State != 0 {
-			log.Fatalf("Wrong response:", err)
-		}
-
-		if syzLLMResponse.State == 999 {
-			break
-		}
-
-		newCall := syzLLMResponse.Syscall
+		newCall := line
 		maskedSyscallList := make([]string, 1)
 		maskedSyscallList[0] = "[MASK]"
 		calls := ParseResource(newCall, maskedSyscallList, 0)
