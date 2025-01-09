@@ -78,6 +78,16 @@ func (p *Prog) RequestAndVerifyCall() {
 
 	reader := bufio.NewReader(file)
 
+	excludeCalls := []string{"newstat", "access", "newlstat", "clone"}
+	containsAny := func(call string) bool {
+		for _, excludeCall := range excludeCalls {
+			if strings.Contains(call, excludeCall) {
+				return true
+			}
+		}
+		return false
+	}
+
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -87,6 +97,9 @@ func (p *Prog) RequestAndVerifyCall() {
 			log.Fatal(err)
 		}
 		line = strings.TrimSuffix(line, "\n")
+		if containsAny(line) {
+			continue
+		}
 
 		newCall := line
 		maskedSyscallList := make([]string, 1)
