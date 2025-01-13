@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/syzkaller/pkg/image"
 )
@@ -81,6 +82,9 @@ func (p *Prog) RequestAndVerifyCall() {
 
 	excludeCalls := []string{"newstat", "access", "newlstat", "clone"}
 
+	// for debug attaching
+	time.Sleep(20 * time.Second)
+
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -110,7 +114,7 @@ func (p *Prog) RequestAndVerifyCall() {
 		newSyscallBytes := []byte(newSyscallSequence)
 		_, err = p.Target.Deserialize(newSyscallBytes, NonStrict)
 		if err != nil {
-			log.Logf(0, newCall)
+			log.Logf(0, newCall, err)
 		}
 	}
 }
