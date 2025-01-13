@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -79,14 +80,6 @@ func (p *Prog) RequestAndVerifyCall() {
 	reader := bufio.NewReader(file)
 
 	excludeCalls := []string{"newstat", "access", "newlstat", "clone"}
-	containsAny := func(call string) bool {
-		for _, excludeCall := range excludeCalls {
-			if strings.Contains(call, excludeCall) {
-				return true
-			}
-		}
-		return false
-	}
 
 	for {
 		line, err := reader.ReadString('\n')
@@ -97,9 +90,11 @@ func (p *Prog) RequestAndVerifyCall() {
 			log.Fatal(err)
 		}
 		line = strings.TrimSuffix(line, "\n")
-		if containsAny(line) {
+		if ContainsAny(line, excludeCalls) {
 			continue
 		}
+
+		line = ProcessDescriptor(line)
 
 		newCall := line
 		maskedSyscallList := make([]string, 1)
@@ -118,6 +113,37 @@ func (p *Prog) RequestAndVerifyCall() {
 			log.Logf(0, newCall)
 		}
 	}
+}
+
+func ContainsAny(call string, list []string) bool {
+	for _, substr := range list {
+		if strings.Contains(call, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+func ProcessDescriptor(line string) string {
+	callsWithDescriptor := []string{"socketpair", "socket", "connect", "select", "getsockname", "openat", "fcntl", "accept4", "read", "quotactl", "getpeername", "sendmmsg", "getsockopt", "bind", "sendto", "setsockopt", "write", "ioctl", "mmap", "recvmsg", "sendmsg", "epoll_ctl", "accept", "prctl", "recvfrom"}
+
+	callName := ExtractCallNameWithoutDescriptor(line)
+	if !ContainsAny(callName, callsWithDescriptor) {
+		line = strings.Replace(line, "$SyzLLM", "", 1)
+	}
+	return line
+}
+
+func ExtractCallNameWithoutDescriptor(call string) string {
+	CallNamePattern := regexp.MustCompile(`^([a-zA-Z0-9_]+)\$`)
+	match := CallNamePattern.FindStringSubmatch(call)
+
+	if len(match) > 1 {
+		return match[1]
+	} else {
+		log.Fatalf("wrong resource call")
+	}
+	return ""
 }
 
 // Internal state required for performing mutations -- currently this matches
