@@ -129,11 +129,16 @@ func ContainsAny(call string, list []string) bool {
 }
 
 func ProcessDescriptor(line string) string {
-	callsWithDescriptor := []string{"socketpair", "socket", "connect", "select", "getsockname", "openat", "fcntl", "accept4", "read", "quotactl", "getpeername", "sendmmsg", "getsockopt", "bind", "sendto", "setsockopt", "write", "ioctl", "mmap", "recvmsg", "sendmsg", "epoll_ctl", "accept", "prctl", "recvfrom"}
+	// TODO:
+	// ~~1. Assign valid descriptor;
+	// 2. process descriptor for nested calls;
+
+	callsWithDescriptor := map[string]string{"socketpair": "socketpair$unix", "socket": "socketpair$unix", "connect": "connect$unix", "select": "select", "getsockname": "getsockname$unix", "openat": "openat$damon_target_ids", "fcntl": "fcntl$setflags", "accept4": "accept4$unix", "read": "read$FUSE", "quotactl": "quotactl$Q_QUOTAON", "getpeername": "getpeername$llc", "sendmmsg": "sendmmsg$unix", "getsockopt": "getsockopt$kcm_KCM_RECV_DISABLE", "bind": "bind$unix", "sendto": "sendto$llc", "setsockopt": "setsockopt$kcm_KCM_RECV_DISABLE", "write": "write$damon_target_ids", "ioctl": "ioctl$FITRIM", "mmap": "mmap$IORING_OFF_SQ_RING", "recvmsg": "recvmsg$unix", "sendmsg": "sendmsg$unix", "epoll_ctl": "epoll_ctl$EPOLL_CTL_ADD", "accept": "accept$unix", "prctl": "prctl$PR_SET_PDEATHSIG", "recvfrom": "recvfrom$unix"}
 
 	callName := ExtractCallNameWithoutDescriptor(line)
-	if !ContainsAny(callName, callsWithDescriptor) {
-		line = strings.Replace(line, "$SyzLLM", "", 1)
+	descriptor, exists := callsWithDescriptor[callName]
+	if exists {
+		line = strings.Replace(line, callName+"$SyzLLM", descriptor, 1)
 	}
 	return line
 }
