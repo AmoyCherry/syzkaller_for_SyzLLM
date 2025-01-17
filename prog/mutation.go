@@ -129,10 +129,6 @@ func ContainsAny(call string, list []string) bool {
 }
 
 func ProcessDescriptor(line string) string {
-	// TODO:
-	// ~~1. Assign valid descriptor;
-	// 2. process descriptor for nested calls;
-
 	callsWithDescriptor := map[string]string{"socketpair": "unix", "socket": "unix", "connect": "unix", "getsockname": "unix", "openat": "damon_target_ids", "fcntl": "setflags", "accept4": "unix", "read": "FUSE", "quotactl": "Q_QUOTAON", "getpeername": "llc", "sendmmsg": "unix", "getsockopt": "kcm_KCM_RECV_DISABLE", "bind": "unix", "sendto": "llc", "setsockopt": "kcm_KCM_RECV_DISABLE", "write": "damon_target_ids", "ioctl": "FITRIM", "mmap": "IORING_OFF_SQ_RING", "recvmsg": "unix", "sendmsg": "unix", "epoll_ctl": "EPOLL_CTL_ADD", "accept": "unix", "prctl": "PR_SET_PDEATHSIG", "recvfrom": "unix"}
 
 	callName := ExtractCallNameWithoutDescriptor(line)
