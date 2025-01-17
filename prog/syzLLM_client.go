@@ -124,7 +124,7 @@ func (ctx *mutator) requestNewCallAsync(program *Prog, insertPosition int, choic
 	}
 
 	newCall := syzLLMResponse.Syscall
-	calls := ParseResource(newCall, maskedSyscallList, insertPosition)
+	calls := ParseNestedResources(newCall, maskedSyscallList, insertPosition)
 	newSyscallSequence := ""
 	for _, call := range calls {
 		if len(newSyscallSequence) > 0 {
@@ -209,11 +209,37 @@ const (
 	RSuffix = "@REND@"
 )
 
+func ParseNestedResources(call string, calls []string, insertPosition int) []string {
+	calls[insertPosition] = call
+
+	for {
+		resCount := 0
+		for i, c := range calls {
+			if HaveResTag(c) {
+				calls = ParseSingleResource(c, calls, i)
+				resCount += 1
+			}
+		}
+		if resCount == 0 {
+			break
+		}
+	}
+	return calls
+}
+
+func HaveResTag(call string) bool {
+	if strings.Contains(call, RPrefix) && strings.ContainsAny(call, RSuffix) {
+		return true
+	}
+	return false
+}
+
+// TODO: Extract syscall between matched res tags
 var re = regexp.MustCompile(regexp.QuoteMeta(RPrefix) + "(.*?)" + regexp.QuoteMeta(RSuffix))
 
 // ParseResource
 // replace Prefix-Call-Suffix to r-
-func ParseResource(call string, calls []string, insertPosition int) []string {
+func ParseSingleResource(call string, calls []string, insertPosition int) []string {
 	var providerText string
 	ParseInner := func(prefixedName string, name string, extractedCall string) string {
 		resCount := 0
