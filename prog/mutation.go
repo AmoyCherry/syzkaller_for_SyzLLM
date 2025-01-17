@@ -133,14 +133,40 @@ func ProcessDescriptor(line string) string {
 	// ~~1. Assign valid descriptor;
 	// 2. process descriptor for nested calls;
 
-	callsWithDescriptor := map[string]string{"socketpair": "socketpair$unix", "socket": "socketpair$unix", "connect": "connect$unix", "select": "select", "getsockname": "getsockname$unix", "openat": "openat$damon_target_ids", "fcntl": "fcntl$setflags", "accept4": "accept4$unix", "read": "read$FUSE", "quotactl": "quotactl$Q_QUOTAON", "getpeername": "getpeername$llc", "sendmmsg": "sendmmsg$unix", "getsockopt": "getsockopt$kcm_KCM_RECV_DISABLE", "bind": "bind$unix", "sendto": "sendto$llc", "setsockopt": "setsockopt$kcm_KCM_RECV_DISABLE", "write": "write$damon_target_ids", "ioctl": "ioctl$FITRIM", "mmap": "mmap$IORING_OFF_SQ_RING", "recvmsg": "recvmsg$unix", "sendmsg": "sendmsg$unix", "epoll_ctl": "epoll_ctl$EPOLL_CTL_ADD", "accept": "accept$unix", "prctl": "prctl$PR_SET_PDEATHSIG", "recvfrom": "recvfrom$unix"}
+	callsWithDescriptor := map[string]string{"socketpair": "unix", "socket": "unix", "connect": "unix", "getsockname": "unix", "openat": "damon_target_ids", "fcntl": "setflags", "accept4": "unix", "read": "FUSE", "quotactl": "Q_QUOTAON", "getpeername": "llc", "sendmmsg": "unix", "getsockopt": "kcm_KCM_RECV_DISABLE", "bind": "unix", "sendto": "llc", "setsockopt": "kcm_KCM_RECV_DISABLE", "write": "damon_target_ids", "ioctl": "FITRIM", "mmap": "IORING_OFF_SQ_RING", "recvmsg": "unix", "sendmsg": "unix", "epoll_ctl": "EPOLL_CTL_ADD", "accept": "unix", "prctl": "PR_SET_PDEATHSIG", "recvfrom": "unix"}
 
 	callName := ExtractCallNameWithoutDescriptor(line)
 	descriptor, exists := callsWithDescriptor[callName]
 	if exists {
-		line = strings.Replace(line, callName+"$SyzLLM", descriptor, 1)
+		line = strings.Replace(line, "$SyzLLM", "$"+descriptor, 1)
+	} else {
+		line = strings.Replace(line, "$SyzLLM", "", 1)
 	}
+
+	line = ProcessNestedDescriptor(line, callsWithDescriptor)
+
 	return line
+}
+
+func ProcessNestedDescriptor(data string, replacements map[string]string) string {
+	pattern := `@RSTART@(.*?)\$SyzLLM`
+	re := regexp.MustCompile(pattern)
+
+	replacer := func(match string) string {
+		syscallName := strings.Split(match, "$SyzLLM")[0]
+		syscallName = strings.TrimPrefix(syscallName, "@RSTART@")
+
+		descriptor, ok := replacements[syscallName]
+		if ok {
+			return "@RSTART@" + syscallName + "$" + descriptor
+		} else {
+			return "@RSTART@" + syscallName
+		}
+	}
+
+	// Replace all occurrences using the replacer function
+	result := re.ReplaceAllStringFunc(data, replacer)
+	return result
 }
 
 func ExtractCallNameWithoutDescriptor(call string) string {
