@@ -228,14 +228,11 @@ func ParseNestedResources(call string, calls []string, insertPosition int) []str
 }
 
 func HaveResTag(call string) bool {
-	if strings.Contains(call, RPrefix) && strings.ContainsAny(call, RSuffix) {
+	if strings.Contains(call, RPrefix) && strings.Contains(call, RSuffix) {
 		return true
 	}
 	return false
 }
-
-// TODO: Extract syscall between matched res tags
-var re = regexp.MustCompile(regexp.QuoteMeta(RPrefix) + "(.*?)" + regexp.QuoteMeta(RSuffix))
 
 // ParseResource
 // replace Prefix-Call-Suffix to r-
@@ -282,14 +279,16 @@ func ParseSingleResource(call string, calls []string, insertPosition int) []stri
 		return ""
 	}
 
-	parsedCall := re.ReplaceAllStringFunc(call, func(match string) string {
-		submatch := re.FindStringSubmatch(match)
-		if submatch == nil || len(submatch) < 2 {
+	parsedCall := ReplaceContentWithinTags(call, func(match string) string {
+		matchWithoutTags := match
+		if strings.HasPrefix(matchWithoutTags, RPrefix) && strings.HasSuffix(matchWithoutTags, RSuffix) {
+			matchWithoutTags = matchWithoutTags[len(RPrefix) : len(matchWithoutTags)-len(RSuffix)]
+		} else {
 			return match
 		}
 		// submatch should look like open$at(0x111, ...)
-		callName := ExtractCallName(submatch[1])
-		return ParseInner(" = "+callName, callName, submatch[1])
+		callName := ExtractCallName(matchWithoutTags)
+		return ParseInner(" = "+callName, callName, matchWithoutTags)
 	})
 	parsedCall = UpdateResourceCount(parsedCall, calls, insertPosition, len(providerText) > 0)
 
@@ -298,6 +297,39 @@ func ParseSingleResource(call string, calls []string, insertPosition int) []stri
 		calls = append(calls[:insertPosition], append([]string{providerText}, calls[insertPosition:]...)...)
 	}
 	return calls
+}
+
+func ReplaceContentWithinTags(data string, repl func(string) string) string {
+	var result strings.Builder
+	var depth int
+	startIndex := -1
+	lastIndex := 0
+
+	for i := 0; i < len(data); {
+		if strings.HasPrefix(data[i:], RPrefix) {
+			if depth == 0 {
+				result.WriteString(data[lastIndex:i])
+				startIndex = i
+			}
+			depth++
+			i += len(RPrefix)
+		} else if strings.HasPrefix(data[i:], RSuffix) {
+			depth--
+			if depth == 0 && startIndex != -1 {
+				segmentWithTags := data[startIndex : i+len(RSuffix)]
+				replacedContent := repl(segmentWithTags)
+				result.WriteString(replacedContent)
+				result.WriteString(data[i+len(RSuffix):])
+				return result.String()
+			}
+			i += len(RSuffix)
+		} else {
+			i++
+		}
+	}
+
+	result.WriteString(data[lastIndex:])
+	return result.String()
 }
 
 var CallNamePattern = regexp.MustCompile(`^([a-zA-Z0-9_$]+)\(`)
