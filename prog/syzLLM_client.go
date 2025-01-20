@@ -287,7 +287,7 @@ func ParseSingleResource(call string, calls []string, insertPosition int) []stri
 			return match
 		}
 		// submatch should look like open$at(0x111, ...)
-		callName := ExtractCallName(matchWithoutTags)
+		callName := ExtractCallNameFromCallWithinTags(matchWithoutTags)
 		return ParseInner(" = "+callName, callName, matchWithoutTags)
 	})
 	parsedCall = UpdateResourceCount(parsedCall, calls, insertPosition, len(providerText) > 0)
@@ -332,20 +332,24 @@ func ReplaceContentWithinTags(data string, repl func(string) string) string {
 	return result.String()
 }
 
-var CallNamePattern = regexp.MustCompile(`^([a-zA-Z0-9_$]+)\(`)
+var CallNamePattern = regexp.MustCompile(`^([a-zA-Z0-9_]+)(\(|\$)`)
 
-func ExtractCallName(call string) string {
+func ExtractCallNameFromCallWithinTags(call string) string {
 	match := CallNamePattern.FindStringSubmatch(call)
 
 	if len(match) > 1 {
 		return match[1]
 	} else {
-		log.Fatalf("wrong resource call")
+		panic("Wrong syscall: no brackets")
 	}
 	return ""
 }
 
 func HasResource(call string) bool {
+	if len(call) <= 0 {
+		return false
+	}
+
 	if call[0] != 'r' {
 		return false
 	}
