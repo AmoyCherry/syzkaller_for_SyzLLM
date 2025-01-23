@@ -367,24 +367,24 @@ func HasResource(call string) bool {
 }
 
 func UpdateResourceCount(call string, calls []string, insertPosition int, hasProvider bool) string {
-	resCount := 0
+	resCountBeforeInsertPosition := 0
 	for i, c := range calls {
 		if i >= insertPosition {
 			break
 		}
 		if HasResource(c) {
-			resCount += 1
+			resCountBeforeInsertPosition += 1
 		}
 	}
 
 	offset := 0
 	if hasProvider {
-		resCount += 1
+		resCountBeforeInsertPosition += 1
 		offset += 1
 	}
 
 	if HasResource(call) {
-		call = AssignResource(call, resCount)
+		call = AssignResource(call, resCountBeforeInsertPosition)
 		offset += 1
 	}
 
@@ -403,16 +403,16 @@ func UpdateResourceCount(call string, calls []string, insertPosition int, hasPro
 	return call
 }
 
-var ResourcePattern = regexp.MustCompile(`^r\d+`)
+var ResourcePattern = regexp.MustCompile(`^r\d+ = `)
 
 func AssignResource(call string, resNumber int) string {
 	newNumberStr := "r" + strconv.Itoa(resNumber)
-	result := ResourcePattern.ReplaceAllString(call, newNumberStr)
+	result := ResourcePattern.ReplaceAllString(call, newNumberStr+" = ")
 
 	return result
 }
 
-var ResNumberPattern = regexp.MustCompile(`^r(\d+)`)
+var ResNumberPattern = regexp.MustCompile(`^r(\d+) = `)
 
 func ExtractResourceNumber(call string) (int, bool) {
 	match := ResNumberPattern.FindStringSubmatch(call)
@@ -420,7 +420,7 @@ func ExtractResourceNumber(call string) (int, bool) {
 	hasRes := true
 	if len(match) < 2 {
 		hasRes = false
-		return 0, hasRes
+		return -1, hasRes
 	}
 
 	number, err := strconv.Atoi(match[1])
