@@ -211,20 +211,46 @@ const (
 
 func ParseNestedResources(call string, calls []string, insertPosition int) []string {
 	calls[insertPosition] = call
+	if !HaveResTag(call) && len(ResNumberPattern.FindStringSubmatch(call)) >= 2 {
+		calls[insertPosition] = UpdateResourceCount(call, calls, insertPosition, false, 0)
+		return calls
+	}
 
+	nestCnt := 0
 	for {
-		resCount := 0
+		updated := false
+		updatedCalls := cloneSlice(calls)
 		for i, c := range calls {
 			if HaveResTag(c) {
-				calls = ParseSingleResource(c, calls, i)
-				resCount += 1
+				updatedCalls = ParseSingleResource(c, updatedCalls, i, nestCnt)
+				nestCnt += 1
+				updated = true
 			}
 		}
-		if resCount == 0 {
+		if !updated {
 			break
 		}
+		calls = updatedCalls
 	}
 	return calls
+}
+
+func isEqual(slice1, slice2 []string) bool {
+	if len(slice1) != len(slice2) {
+		return false
+	}
+	for i, v := range slice1 {
+		if v != slice2[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func cloneSlice(original []string) []string {
+	cloned := make([]string, len(original))
+	copy(cloned, original)
+	return cloned
 }
 
 func HaveResTag(call string) bool {
@@ -236,12 +262,12 @@ func HaveResTag(call string) bool {
 
 // ParseResource
 // replace Prefix-Call-Suffix to r-
-func ParseSingleResource(call string, calls []string, insertPosition int) []string {
+func ParseSingleResource(call string, calls []string, insertPosition int, nestCnt int) []string {
 	var providerText string
 	ParseInner := func(prefixedName string, name string, extractedCall string) string {
 		resCount := 0
 		for i, c := range calls {
-			if HasResource(c) {
+			if HasResource(c) && i < insertPosition {
 				resCount += 1
 			}
 			startIdx := strings.Index(c, prefixedName)
@@ -290,7 +316,7 @@ func ParseSingleResource(call string, calls []string, insertPosition int) []stri
 		callName := ExtractCallNameFromCallWithinTags(matchWithoutTags)
 		return ParseInner(" = "+callName, callName, matchWithoutTags)
 	})
-	parsedCall = UpdateResourceCount(parsedCall, calls, insertPosition, len(providerText) > 0)
+	parsedCall = UpdateResourceCount(parsedCall, calls, insertPosition, len(providerText) > 0, nestCnt)
 
 	calls[insertPosition] = parsedCall
 	if len(providerText) > 0 {
@@ -366,7 +392,7 @@ func HasResource(call string) bool {
 	return false
 }
 
-func UpdateResourceCount(call string, calls []string, insertPosition int, hasProvider bool) string {
+func UpdateResourceCount(call string, calls []string, insertPosition int, hasProvider bool, nestCnt int) string {
 	resCountBeforeInsertPosition := 0
 	for i, c := range calls {
 		if i >= insertPosition {
@@ -384,8 +410,18 @@ func UpdateResourceCount(call string, calls []string, insertPosition int, hasPro
 	}
 
 	if HasResource(call) {
+		resNumber, _ := ExtractResourceNumber(call)
 		call = AssignResource(call, resCountBeforeInsertPosition)
-		offset += 1
+		calls[insertPosition] = call
+		if nestCnt > 0 {
+			for i := insertPosition + 1; i < len(calls); i++ {
+				calls[i] = strings.Replace(calls[i], "r"+strconv.Itoa(resNumber)+",", "r"+strconv.Itoa(resNumber+offset)+",", -1)
+				calls[i] = strings.Replace(calls[i], "r"+strconv.Itoa(resNumber)+")", "r"+strconv.Itoa(resNumber+offset)+")", -1)
+				calls[i] = strings.Replace(calls[i], "r"+strconv.Itoa(resNumber)+"}", "r"+strconv.Itoa(resNumber+offset)+"}", -1)
+			}
+		} else if nestCnt == 0 {
+			offset += 1
+		}
 	}
 
 	for i := insertPosition + 1; offset > 0 && i < len(calls); i++ {
