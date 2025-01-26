@@ -124,7 +124,7 @@ func (ctx *mutator) requestNewCallAsync(program *Prog, insertPosition int, choic
 	}
 
 	newCall := syzLLMResponse.Syscall
-	calls := ParseResource(newCall, maskedSyscallList, insertPosition)
+	calls := ParseNestedResources(newCall, maskedSyscallList, insertPosition)
 	newSyscallSequence := ""
 	for _, call := range calls {
 		if len(newSyscallSequence) > 0 {
@@ -209,16 +209,65 @@ const (
 	RSuffix = "@REND@"
 )
 
-var re = regexp.MustCompile(regexp.QuoteMeta(RPrefix) + "(.*?)" + regexp.QuoteMeta(RSuffix))
+func ParseNestedResources(call string, calls []string, insertPosition int) []string {
+	calls[insertPosition] = call
+	if !HaveResTag(call) && len(ResNumberPattern.FindStringSubmatch(call)) >= 2 {
+		calls[insertPosition] = UpdateResourceCount(call, calls, insertPosition, false, 0)
+		return calls
+	}
+
+	nestCnt := 0
+	for {
+		updated := false
+		updatedCalls := cloneSlice(calls)
+		for i, c := range calls {
+			if HaveResTag(c) {
+				updatedCalls = ParseSingleResource(c, updatedCalls, i, nestCnt)
+				nestCnt += 1
+				updated = true
+			}
+		}
+		if !updated {
+			break
+		}
+		calls = updatedCalls
+	}
+	return calls
+}
+
+func isEqual(slice1, slice2 []string) bool {
+	if len(slice1) != len(slice2) {
+		return false
+	}
+	for i, v := range slice1 {
+		if v != slice2[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func cloneSlice(original []string) []string {
+	cloned := make([]string, len(original))
+	copy(cloned, original)
+	return cloned
+}
+
+func HaveResTag(call string) bool {
+	if strings.Contains(call, RPrefix) && strings.Contains(call, RSuffix) {
+		return true
+	}
+	return false
+}
 
 // ParseResource
 // replace Prefix-Call-Suffix to r-
-func ParseResource(call string, calls []string, insertPosition int) []string {
+func ParseSingleResource(call string, calls []string, insertPosition int, nestCnt int) []string {
 	var providerText string
 	ParseInner := func(prefixedName string, name string, extractedCall string) string {
 		resCount := 0
 		for i, c := range calls {
-			if HasResource(c) {
+			if HasResource(c) && i < insertPosition {
 				resCount += 1
 			}
 			startIdx := strings.Index(c, prefixedName)
@@ -256,16 +305,18 @@ func ParseResource(call string, calls []string, insertPosition int) []string {
 		return ""
 	}
 
-	parsedCall := re.ReplaceAllStringFunc(call, func(match string) string {
-		submatch := re.FindStringSubmatch(match)
-		if submatch == nil || len(submatch) < 2 {
+	parsedCall := ReplaceContentWithinTags(call, func(match string) string {
+		matchWithoutTags := match
+		if strings.HasPrefix(matchWithoutTags, RPrefix) && strings.HasSuffix(matchWithoutTags, RSuffix) {
+			matchWithoutTags = matchWithoutTags[len(RPrefix) : len(matchWithoutTags)-len(RSuffix)]
+		} else {
 			return match
 		}
 		// submatch should look like open$at(0x111, ...)
-		callName := ExtractCallName(submatch[1])
-		return ParseInner(" = "+callName, callName, submatch[1])
+		callName := ExtractCallNameFromCallWithinTags(matchWithoutTags)
+		return ParseInner(" = "+callName, callName, matchWithoutTags)
 	})
-	parsedCall = UpdateResourceCount(parsedCall, calls, insertPosition, len(providerText) > 0)
+	parsedCall = UpdateResourceCount(parsedCall, calls, insertPosition, len(providerText) > 0, nestCnt)
 
 	calls[insertPosition] = parsedCall
 	if len(providerText) > 0 {
@@ -274,20 +325,57 @@ func ParseResource(call string, calls []string, insertPosition int) []string {
 	return calls
 }
 
-var CallNamePattern = regexp.MustCompile(`^([a-zA-Z0-9_$]+)\(`)
+func ReplaceContentWithinTags(data string, repl func(string) string) string {
+	var result strings.Builder
+	var depth int
+	startIndex := -1
+	lastIndex := 0
 
-func ExtractCallName(call string) string {
+	for i := 0; i < len(data); {
+		if strings.HasPrefix(data[i:], RPrefix) {
+			if depth == 0 {
+				result.WriteString(data[lastIndex:i])
+				startIndex = i
+			}
+			depth++
+			i += len(RPrefix)
+		} else if strings.HasPrefix(data[i:], RSuffix) {
+			depth--
+			if depth == 0 && startIndex != -1 {
+				segmentWithTags := data[startIndex : i+len(RSuffix)]
+				replacedContent := repl(segmentWithTags)
+				result.WriteString(replacedContent)
+				result.WriteString(data[i+len(RSuffix):])
+				return result.String()
+			}
+			i += len(RSuffix)
+		} else {
+			i++
+		}
+	}
+
+	result.WriteString(data[lastIndex:])
+	return result.String()
+}
+
+var CallNamePattern = regexp.MustCompile(`^([a-zA-Z0-9_]+)(\(|\$)`)
+
+func ExtractCallNameFromCallWithinTags(call string) string {
 	match := CallNamePattern.FindStringSubmatch(call)
 
 	if len(match) > 1 {
 		return match[1]
 	} else {
-		log.Fatalf("wrong resource call")
+		panic("Wrong syscall: no brackets")
 	}
 	return ""
 }
 
 func HasResource(call string) bool {
+	if len(call) <= 0 {
+		return false
+	}
+
 	if call[0] != 'r' {
 		return false
 	}
@@ -304,26 +392,36 @@ func HasResource(call string) bool {
 	return false
 }
 
-func UpdateResourceCount(call string, calls []string, insertPosition int, hasProvider bool) string {
-	resCount := 0
+func UpdateResourceCount(call string, calls []string, insertPosition int, hasProvider bool, nestCnt int) string {
+	resCountBeforeInsertPosition := 0
 	for i, c := range calls {
 		if i >= insertPosition {
 			break
 		}
 		if HasResource(c) {
-			resCount += 1
+			resCountBeforeInsertPosition += 1
 		}
 	}
 
 	offset := 0
 	if hasProvider {
-		resCount += 1
+		resCountBeforeInsertPosition += 1
 		offset += 1
 	}
 
 	if HasResource(call) {
-		call = AssignResource(call, resCount)
-		offset += 1
+		resNumber, _ := ExtractResourceNumber(call)
+		call = AssignResource(call, resCountBeforeInsertPosition)
+		calls[insertPosition] = call
+		if nestCnt > 0 {
+			for i := insertPosition + 1; i < len(calls); i++ {
+				calls[i] = strings.Replace(calls[i], "r"+strconv.Itoa(resNumber)+",", "r"+strconv.Itoa(resNumber+offset)+",", -1)
+				calls[i] = strings.Replace(calls[i], "r"+strconv.Itoa(resNumber)+")", "r"+strconv.Itoa(resNumber+offset)+")", -1)
+				calls[i] = strings.Replace(calls[i], "r"+strconv.Itoa(resNumber)+"}", "r"+strconv.Itoa(resNumber+offset)+"}", -1)
+			}
+		} else if nestCnt == 0 {
+			offset += 1
+		}
 	}
 
 	for i := insertPosition + 1; offset > 0 && i < len(calls); i++ {
@@ -341,16 +439,16 @@ func UpdateResourceCount(call string, calls []string, insertPosition int, hasPro
 	return call
 }
 
-var ResourcePattern = regexp.MustCompile(`^r\d+`)
+var ResourcePattern = regexp.MustCompile(`^r\d+ = `)
 
 func AssignResource(call string, resNumber int) string {
 	newNumberStr := "r" + strconv.Itoa(resNumber)
-	result := ResourcePattern.ReplaceAllString(call, newNumberStr)
+	result := ResourcePattern.ReplaceAllString(call, newNumberStr+" = ")
 
 	return result
 }
 
-var ResNumberPattern = regexp.MustCompile(`^r(\d+)`)
+var ResNumberPattern = regexp.MustCompile(`^r(\d+) = `)
 
 func ExtractResourceNumber(call string) (int, bool) {
 	match := ResNumberPattern.FindStringSubmatch(call)
@@ -358,7 +456,7 @@ func ExtractResourceNumber(call string) (int, bool) {
 	hasRes := true
 	if len(match) < 2 {
 		hasRes = false
-		return 0, hasRes
+		return -1, hasRes
 	}
 
 	number, err := strconv.Atoi(match[1])
