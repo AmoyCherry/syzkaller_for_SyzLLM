@@ -103,7 +103,7 @@ func (p *Prog) RequestAndVerifyCall() {
 		newCall := line
 		maskedSyscallList := make([]string, 1)
 		maskedSyscallList[0] = "[MASK]"
-		calls := ParseResource(newCall, maskedSyscallList, 0)
+		calls := ParseNestedResources(newCall, maskedSyscallList, 0)
 		newSyscallSequence := ""
 		for _, call := range calls {
 			if len(newSyscallSequence) > 0 {
