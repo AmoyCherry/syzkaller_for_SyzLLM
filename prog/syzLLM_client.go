@@ -123,7 +123,7 @@ func (ctx *mutator) requestNewCallAsync(program *Prog, insertPosition int, choic
 		return program.Calls
 	}
 
-	newCall := syzLLMResponse.Syscall
+	newCall := ProcessDescriptor(syzLLMResponse.Syscall)
 	calls := ParseNestedResources(newCall, maskedSyscallList, insertPosition)
 	newSyscallSequence := ""
 	for _, call := range calls {
