@@ -172,7 +172,7 @@ func ExtractCallNameWithoutDescriptor(call string) string {
 	if len(match) > 1 {
 		return match[1]
 	} else {
-		log.Fatalf("wrong resource call")
+		log.Fatalf("wrong resource call: %v", call)
 	}
 	return ""
 }
