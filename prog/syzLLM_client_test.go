@@ -195,6 +195,60 @@ func TestReplaceContentWithinTags(t *testing.T) {
 	}
 }
 
+func TestParsePipeResource(t *testing.T) {
+	tests := []struct {
+		name                string
+		paramCall           string
+		paramCalls          []string
+		paramInsertPosition int
+		want                []string
+	}{
+		{
+			"NoPipe",
+			"epoll_ctl$EPOLL_CTL_ADD(@RSTART@epoll_create1(0x80000)@REND@, 0x2, @RSTART@openat$damon_target_ids(0xffffffffffffff9c, &(0x7f0000008000)='./file0\\x00', 0x241, 0x180)@REND@, &(0x7f000003a000)={0x1, 0x4C})",
+			[]string{"r0 = openat()", "read(r0)", "epoll_ctl$EPOLL_CTL_ADD(@RSTART@epoll_create1(0x80000)@REND@, 0x2, @RSTART@openat$damon_target_ids(0xffffffffffffff9c, &(0x7f0000008000)='./file0\\x00', 0x241, 0x180)@REND@, &(0x7f000003a000)={0x1, 0x4C})", "r1 = close(r0)", "r2 = write$unix(r1)"},
+			2,
+			[]string{"r0 = openat()", "read(r0)", "epoll_ctl$EPOLL_CTL_ADD(@RSTART@epoll_create1(0x80000)@REND@, 0x2, @RSTART@openat$damon_target_ids(0xffffffffffffff9c, &(0x7f0000008000)='./file0\\x00', 0x241, 0x180)@REND@, &(0x7f000003a000)={0x1, 0x4C})", "r1 = close(r0)", "r2 = write$unix(r1)"},
+		},
+		{
+			"ReadOnePipe",
+			"read(@PIPESTART@pipe(&(0x7f0000064000)={<r0=>0xffffffffffffffff, <r1=>0xffffffffffffffff})@PIPEEND@, &(0x7f0000055000)=\"\"/0x400, 0xa)",
+			[]string{"r0 = openat()", "read(r0)", "read(@PIPESTART@pipe(&(0x7f0000064000)={<r0=>0xffffffffffffffff, <r1=>0xffffffffffffffff})@PIPEEND@, &(0x7f0000055000)=\"\"/0x400, 0xa)", "r1 = close(r0)", "r2 = write$unix(r1)"},
+			2,
+			[]string{"r0 = openat()", "read(r0)", "pipe(&(0x7f0000064000)={<r1=>0xffffffffffffffff, <r2=>0xffffffffffffffff})", "read(r1, &(0x7f0000055000)=\"\"/0x400, 0xa)", "r4 = close(r0)", "r5 = write$unix(r4)"},
+		},
+		{
+			"EpollOnePipe",
+			"epoll_ctl$EPOLL_CTL_ADD(@RSTART@epoll_create1(0x80000)@REND@, 0x1, @PIPESTART@pipe(&(0x7f0000064000)={<r0=>0xffffffffffffffff, <r1=>0xffffffffffffffff})@PIPEEND@, &(0x7f000003a000)={0x1, 0x10})",
+			[]string{"r0 = openat()", "read(r0)", "epoll_ctl$EPOLL_CTL_ADD(@RSTART@epoll_create1(0x80000)@REND@, 0x1, @PIPESTART@pipe(&(0x7f0000064000)={<r0=>0xffffffffffffffff, <r1=>0xffffffffffffffff})@PIPEEND@, &(0x7f000003a000)={0x1, 0x10})", "r1 = close(r0)", "r2 = write$unix(r1)"},
+			2,
+			[]string{"r0 = openat()", "read(r0)", "r1 = epoll_create1(0x80000)", "pipe(&(0x7f0000064000)={<r2=>0xffffffffffffffff, <r3=>0xffffffffffffffff})", "epoll_ctl$EPOLL_CTL_ADD(r1, 0x1, r2, &(0x7f000003a000)={0x1, 0x10})", "r4 = close(r0)", "r5 = write$unix(r4)"},
+		},
+		{
+			"PollTwoPipes",
+			"poll(&(0x7f0000080000)=[{@PIPESTART@pipe(&(0x7f0000064000)={<r0=>0xffffffffffffffff, <r1=>0xffffffffffffffff})@PIPEEND@ }, {@PIPESTART@pipe(&(0x7f0000064000)={<r0=>0xffffffffffffffff, <r1=>0xffffffffffffffff})@PIPEEND@ }], 0x2, 0x3e0)",
+			[]string{"r0 = openat()", "read(r0)", "poll(&(0x7f0000080000)=[{@PIPESTART@pipe(&(0x7f0000064000)={<r0=>0xffffffffffffffff, <r1=>0xffffffffffffffff})@PIPEEND@ }, {@PIPESTART@pipe(&(0x7f0000064000)={<r0=>0xffffffffffffffff, <r1=>0xffffffffffffffff})@PIPEEND@ }], 0x2, 0x3e0)", "r1 = close(r0)", "r2 = write$unix(r1)"},
+			2,
+			[]string{"r0 = openat()", "read(r0)", "pipe(&(0x7f0000064000)={<r1=>0xffffffffffffffff, <r2=>0xffffffffffffffff})", "poll(&(0x7f0000080000)=[{r1 }, {r2 }], 0x2, 0x3e0)", "r3 = close(r0)", "r4 = write$unix(r3)"},
+		},
+		{
+			"SpliceTwoPipes",
+			"splice$SyzLLM(@PIPESTART@pipe(&(0x7f00000d7000)={<r2=>0xffffffffffffffff, <r3=>0xffffffffffffffff})@PIPEEND@, &(0x7f00000e2000)=nil, @PIPESTART@pipe(&(0x7f00000d7000)={<r2=>0xffffffffffffffff, <r3=>0xffffffffffffffff})@PIPEEND@, &(0x7f00000e6000)=nil, 0x10000, 0x5)",
+			[]string{"r0 = openat()", "read(r0)", "splice$SyzLLM(@PIPESTART@pipe(&(0x7f00000d7000)={<r2=>0xffffffffffffffff, <r3=>0xffffffffffffffff})@PIPEEND@, &(0x7f00000e2000)=nil, @PIPESTART@pipe(&(0x7f00000d7000)={<r2=>0xffffffffffffffff, <r3=>0xffffffffffffffff})@PIPEEND@, &(0x7f00000e6000)=nil, 0x10000, 0x5)", "r1 = close(r0)", "r2 = write$unix(r1)"},
+			2,
+			[]string{"r0 = openat()", "read(r0)", "pipe(&(0x7f00000d7000)={<r1=>0xffffffffffffffff, <r2=>0xffffffffffffffff})", "splice$SyzLLM(r1, &(0x7f00000e2000)=nil, r2, &(0x7f00000e6000)=nil, 0x10000, 0x5)", "r3 = close(r0)", "r4 = write$unix(r3)"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ParsePipeResource(tt.paramCall, tt.paramCalls, tt.paramInsertPosition, 0); !isEqual(got, tt.want) {
+				t.Errorf("ParsePipeResource() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseSingleResource(t *testing.T) {
 	tests := []struct {
 		name                string

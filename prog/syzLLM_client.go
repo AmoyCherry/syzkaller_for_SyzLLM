@@ -260,8 +260,12 @@ func HaveResTag(call string) bool {
 	return false
 }
 
+func ParsePipeResource(call string, calls []string, insertPosition int, nestCnt int) []string {
+	return calls
+}
+
 // ParseResource
-// replace Prefix-Call-Suffix to r-
+// replace PrefixCallSuffix to r*
 func ParseSingleResource(call string, calls []string, insertPosition int, nestCnt int) []string {
 	var providerText string
 	ParseInner := func(prefixedName string, name string, extractedCall string) string {
