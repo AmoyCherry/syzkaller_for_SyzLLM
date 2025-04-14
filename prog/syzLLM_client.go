@@ -228,6 +228,12 @@ func ParseNestedResources(call string, calls []string, insertPosition int) []str
 			}
 		}
 		if !updated {
+			for i, c := range calls {
+				if strings.Contains(c, "@PIPESTART@") && strings.Contains(c, "@PIPEEND@") {
+					updatedCalls = ParsePipeResource(c, updatedCalls, i)
+				}
+			}
+			calls = updatedCalls
 			break
 		}
 		calls = updatedCalls
@@ -260,8 +266,121 @@ func HaveResTag(call string) bool {
 	return false
 }
 
-func ParsePipeResource(call string, calls []string, insertPosition int, nestCnt int) []string {
-	return calls
+func ParsePipeResource(call string, calls []string, insertPosition int) []string {
+	newCalls := make([]string, len(calls))
+	copy(newCalls, calls)
+
+	pipeStart := "@PIPESTART@"
+	pipeEnd := "@PIPEEND@"
+	if !strings.Contains(call, pipeStart) || !strings.Contains(call, pipeEnd) {
+		return newCalls
+	}
+
+	has, ids := HasPipeBeforeInsertPosition(calls, insertPosition)
+	if has {
+		newCalls[insertPosition] = ReplaceMultipleBetween(call, pipeStart, pipeEnd, ids)
+		return newCalls
+	}
+
+	nextResource := GetNextResource(calls, insertPosition)
+
+	startIdx := strings.Index(call, pipeStart) + len(pipeStart)
+	endIdx := strings.Index(call, pipeEnd)
+	pipeCall := call[startIdx:endIdx]
+	pipeCallResNumUpdated := strings.Replace(pipeCall, "<r1=>", "<r"+strconv.Itoa(nextResource+1)+"=>", 1)
+	pipeCallResNumUpdated = strings.Replace(pipeCallResNumUpdated, "<r0=>", "<r"+strconv.Itoa(nextResource)+"=>", 1)
+
+	numPipeResources := strings.Count(call, pipeStart)
+	modifiedCall := call
+	for i := 0; i < numPipeResources; i++ {
+		start := strings.Index(modifiedCall, pipeStart)
+		end := strings.Index(modifiedCall[start:], pipeEnd) + start + len(pipeEnd)
+		if start == -1 || end <= start {
+			break
+		}
+		resourceName := "r" + strconv.Itoa(nextResource+i)
+		modifiedCall = modifiedCall[:start] + resourceName + modifiedCall[end:]
+	}
+
+	numNewResources := 2
+	result := make([]string, 0, len(calls)+1)
+	result = append(result, calls[:insertPosition]...)
+	result = append(result, pipeCallResNumUpdated)
+	result = append(result, modifiedCall)
+	for _, c := range calls[insertPosition+1:] {
+		updatedCall := updateResourceNumbers(c, nextResource, numNewResources)
+		result = append(result, updatedCall)
+	}
+
+	return result
+}
+
+var ResourceIDsRegex = regexp.MustCompile(`<r(\d+)=>`)
+
+func ExtractResourceIDs(s string) []string {
+	matches := ResourceIDsRegex.FindAllStringSubmatch(s, -1)
+	ids := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if len(match) > 1 {
+			ids = append(ids, "r"+match[1])
+		}
+	}
+	return ids
+}
+
+func HasPipeBeforeInsertPosition(calls []string, insertPosition int) (has bool, replacements []string) {
+	for i := insertPosition - 1; i >= 0 && i < len(calls); i-- {
+		if strings.HasPrefix(calls[i], "pipe") {
+			replacements = ExtractResourceIDs(calls[i])
+			return true, replacements
+		}
+	}
+	return false, replacements
+}
+
+func ReplaceMultipleBetween(s, prefix, suffix string, replacements []string) string {
+	result := s
+	for _, replacement := range replacements {
+		startIdx := strings.Index(result, prefix)
+		if startIdx == -1 {
+			break
+		}
+		endIdx := strings.Index(result[startIdx:], suffix)
+		if endIdx == -1 {
+			break
+		}
+		endIdx += startIdx + len(suffix)
+		result = result[:startIdx] + replacement + result[endIdx:]
+	}
+	return result
+}
+
+func GetNextResource(calls []string, insertPosition int) int {
+	maxN := -1
+	re := regexp.MustCompile(`^r(\d+) = `)
+	for i := 0; i < insertPosition && i < len(calls); i++ {
+		matches := re.FindStringSubmatch(calls[i])
+		if matches != nil {
+			if n, err := strconv.Atoi(matches[1]); err == nil && n > maxN {
+				maxN = n
+			}
+		}
+	}
+	return maxN + 1
+}
+
+func updateResourceNumbers(call string, nextResource, numNewResources int) string {
+	re := regexp.MustCompile(`r(\d+)`)
+	return re.ReplaceAllStringFunc(call, func(match string) string {
+		n, err := strconv.Atoi(match[1:])
+		if err != nil {
+			return match
+		}
+		if n >= nextResource {
+			return "r" + strconv.Itoa(n+numNewResources)
+		}
+		return match
+	})
 }
 
 // ParseResource
@@ -271,8 +390,8 @@ func ParseSingleResource(call string, calls []string, insertPosition int, nestCn
 	ParseInner := func(prefixedName string, name string, extractedCall string) string {
 		resCount := 0
 		for i, c := range calls {
-			if HasResource(c) && i < insertPosition {
-				resCount += 1
+			if count := HasResource(c); count > 0 && i < insertPosition {
+				resCount += count
 			}
 			startIdx := strings.Index(c, prefixedName)
 			if startIdx != -1 && i < insertPosition {
@@ -375,25 +494,30 @@ func ExtractCallNameFromCallWithinTags(call string) string {
 	return ""
 }
 
-func HasResource(call string) bool {
+func HasResource(call string) int {
 	if len(call) <= 0 {
-		return false
+		return 0
+	}
+
+	if strings.HasPrefix(call, "pipe") {
+		matches := ResourceIDsRegex.FindAllStringSubmatch(call, -1)
+		return len(matches)
 	}
 
 	if call[0] != 'r' {
-		return false
+		return 0
 	}
 	for _, c := range call {
 		switch c {
 		case '(':
-			return false
+			return 0
 		case '=':
-			return true
+			return 1
 		default:
 			continue
 		}
 	}
-	return false
+	return 0
 }
 
 func UpdateResourceCount(call string, calls []string, insertPosition int, hasProvider bool, nestCnt int) string {
@@ -402,9 +526,7 @@ func UpdateResourceCount(call string, calls []string, insertPosition int, hasPro
 		if i >= insertPosition {
 			break
 		}
-		if HasResource(c) {
-			resCountBeforeInsertPosition += 1
-		}
+		resCountBeforeInsertPosition += HasResource(c)
 	}
 
 	offset := 0
@@ -413,7 +535,7 @@ func UpdateResourceCount(call string, calls []string, insertPosition int, hasPro
 		offset += 1
 	}
 
-	if HasResource(call) {
+	if HasResource(call) > 0 {
 		resNumber, _ := ExtractResourceNumber(call)
 		call = AssignResource(call, resCountBeforeInsertPosition)
 		calls[insertPosition] = call
