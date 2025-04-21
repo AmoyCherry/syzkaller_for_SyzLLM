@@ -504,6 +504,16 @@ func TestProcessDescriptor(t *testing.T) {
 			input:    "epoll_wait$SyzLLM(@RSTART@epoll_create1$SyzLLM(0x80000)@REND@, &(0x7f0000059000)=[{}], 0x400, 0x0)",
 			expected: "epoll_wait(@RSTART@epoll_create1(0x80000)@REND@, &(0x7f0000059000)=[{}], 0x400, 0x0)",
 		},
+		{
+			name:     "pipe2 without SyzLLM",
+			input:    "pipe2(&(0x7f0000000240)={<r1=>0xffffffffffffffff, <r2=>0xffffffffffffffff}, 0x80800)",
+			expected: "pipe2(&(0x7f0000000240)={<r1=>0xffffffffffffffff, <r2=>0xffffffffffffffff}, 0x80800)",
+		},
+		{
+			name:     "pipe without SyzLLM",
+			input:    "pipe(&(0x7f0000000240)={<r1=>0xffffffffffffffff, <r2=>0xffffffffffffffff}, 0x80800)",
+			expected: "pipe(&(0x7f0000000240)={<r1=>0xffffffffffffffff, <r2=>0xffffffffffffffff}, 0x80800)",
+		},
 	}
 
 	for _, tt := range tests {

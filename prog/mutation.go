@@ -129,6 +129,13 @@ func ContainsAny(call string, list []string) bool {
 }
 
 func ProcessDescriptor(line string) string {
+	callsWithoutDescriptor := []string{"pipe"}
+	for _, c := range callsWithoutDescriptor {
+		if strings.HasPrefix(line, c) {
+			return line
+		}
+	}
+
 	callsWithDescriptor := map[string]string{"socketpair": "unix", "socket": "unix", "connect": "unix", "getsockname": "unix", "openat": "damon_target_ids", "fcntl": "setflags", "accept4": "unix", "read": "FUSE", "quotactl": "Q_QUOTAON", "getpeername": "llc", "sendmmsg": "unix", "getsockopt": "kcm_KCM_RECV_DISABLE", "bind": "unix", "sendto": "llc", "setsockopt": "kcm_KCM_RECV_DISABLE", "write": "damon_target_ids", "ioctl": "FITRIM", "mmap": "IORING_OFF_SQ_RING", "recvmsg": "unix", "sendmsg": "unix", "epoll_ctl": "EPOLL_CTL_ADD", "accept": "unix", "prctl": "PR_SET_PDEATHSIG", "recvfrom": "unix"}
 
 	callName := ExtractCallNameWithoutDescriptor(line)
