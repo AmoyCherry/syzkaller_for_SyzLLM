@@ -32,6 +32,12 @@ type Proc struct {
 	execOptsCollide *ipc.ExecOpts
 	execOptsCover   *ipc.ExecOpts
 	execOptsComps   *ipc.ExecOpts
+
+	// IF SYZLLM
+	progCnt int
+	statCnt int
+	avgSize int
+	// ENDIF
 }
 
 func newProc(fuzzer *Fuzzer, pid int) (*Proc, error) {
@@ -55,6 +61,11 @@ func newProc(fuzzer *Fuzzer, pid int) (*Proc, error) {
 		execOptsCollide: &execOptsCollide,
 		execOptsCover:   &execOptsCover,
 		execOptsComps:   &execOptsComps,
+		// IF SYZLLM
+		progCnt: 0,
+		statCnt: 0,
+		avgSize: 0,
+		// ENDIF
 	}
 	return proc, nil
 }
@@ -263,6 +274,19 @@ func (proc *Proc) execute(execOpts *ipc.ExecOpts, p *prog.Prog, flags ProgTypes,
 	if extra {
 		proc.enqueueCallTriage(p, flags, -1, info.Extra)
 	}
+	// IF SYZLLM
+	proc.progCnt += 1
+	if proc.progCnt > 5e5 {
+		if proc.statCnt > 1e3 {
+			log.Logf(0, "avg prog size: %v", proc.avgSize/proc.statCnt)
+			proc.statCnt = 0
+			proc.avgSize = 0
+		} else {
+			proc.statCnt += 1
+			proc.avgSize += len(p.Calls)
+		}
+	}
+	// ENDIF
 	return info
 }
 
