@@ -396,3 +396,8 @@ func (serv *RPCServer) shutdownInstance(name string) []byte {
 	delete(serv.fuzzers, name)
 	return fuzzer.machineInfo
 }
+
+func (serv *RPCServer) GetSyzLLMProbability(a *int, r *rpctype.SyzLLMProbabilityRes) error {
+	r.Prob = SyzLLMProbabilityManager
+	return nil
+}

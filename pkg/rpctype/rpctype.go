@@ -200,3 +200,7 @@ type RunTestDoneArgs struct {
 	Info   []*ipc.ProgInfo
 	Error  string
 }
+
+type SyzLLMProbabilityRes struct {
+	Prob float64
+}

@@ -302,6 +302,7 @@ func main() {
 		fuzzer.execOpts.Flags |= ipc.FlagEnableCoverageFilter
 	}
 
+	fuzzer.startTickerForSyzLLMProb()
 	//dummyProg := prog.Prog{
 	//	Target:   target,
 	//	Calls:    make([]*prog.Call, 0),
@@ -348,6 +349,17 @@ func (fuzzer *Fuzzer) useBugFrames(r *rpctype.ConnectRes, flagProcs int) func() 
 	}
 
 	return gateCallback
+}
+
+func (fuzzer *Fuzzer) startTickerForSyzLLMProb() {
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			fuzzer.GetSyzLLMProbability()
+		}
+	}()
 }
 
 func (fuzzer *Fuzzer) gateCallback(leakFrames []string) {
@@ -449,6 +461,14 @@ func (fuzzer *Fuzzer) poll(needCandidates bool, stats map[string]uint64) bool {
 		atomic.StoreUint32(&fuzzer.triagedCandidates, 1)
 	}
 	return len(r.NewInputs) != 0 || len(r.Candidates) != 0 || maxSignal.Len() != 0
+}
+
+func (fuzzer *Fuzzer) GetSyzLLMProbability() {
+	r := &rpctype.SyzLLMProbabilityRes{}
+	if err := fuzzer.manager.Call("Manager.GetSyzLLMProbability", nil, r); err != nil {
+		log.SyzFatalf("Manager.GetSyzLLMProbability call failed: %v", err)
+	}
+	prog.SyzLLMProbabilityFuzzer = r.Prob
 }
 
 func (fuzzer *Fuzzer) sendInputToManager(inp rpctype.Input) {
