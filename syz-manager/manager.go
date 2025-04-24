@@ -1591,3 +1591,27 @@ func publicWebAddr(addr string) string {
 	}
 	return "http://" + addr
 }
+
+var mutationStart = time.Now()
+var SyzLLMProbabilityManager = 1.0
+var LastHour = 0.0
+
+func init() {
+	go func() {
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			elapsed := time.Since(mutationStart).Hours()
+			// Check if we've crossed a new hour boundary after 4 hours
+			if elapsed >= 4 && int(elapsed) > int(LastHour) {
+				SyzLLMProbabilityManager /= 2
+				// Set minimum probability to prevent it from becoming too small
+				if SyzLLMProbabilityManager < 0.01 {
+					SyzLLMProbabilityManager = 0.01
+				}
+				LastHour = float64(int(elapsed))
+			}
+		}
+	}()
+}

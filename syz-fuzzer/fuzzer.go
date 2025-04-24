@@ -302,6 +302,7 @@ func main() {
 		fuzzer.execOpts.Flags |= ipc.FlagEnableCoverageFilter
 	}
 
+	fuzzer.GetSyzLLMProbability()
 	//dummyProg := prog.Prog{
 	//	Target:   target,
 	//	Calls:    make([]*prog.Call, 0),
@@ -449,6 +450,15 @@ func (fuzzer *Fuzzer) poll(needCandidates bool, stats map[string]uint64) bool {
 		atomic.StoreUint32(&fuzzer.triagedCandidates, 1)
 	}
 	return len(r.NewInputs) != 0 || len(r.Candidates) != 0 || maxSignal.Len() != 0
+}
+
+func (fuzzer *Fuzzer) GetSyzLLMProbability() {
+	a := &rpctype.SyzLLMProbabilityArg{}
+	r := &rpctype.SyzLLMProbabilityRes{}
+	if err := fuzzer.manager.Call("Manager.GetSyzLLMProbability", a, r); err != nil {
+		log.SyzFatalf("Manager.GetSyzLLMProbability call failed: %v", err)
+	}
+	prog.SyzLLMProbabilityFuzzer = r.Prob
 }
 
 func (fuzzer *Fuzzer) sendInputToManager(inp rpctype.Input) {

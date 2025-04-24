@@ -22,6 +22,9 @@ import (
 // Maximum length of generated binary blobs inserted into the program.
 const maxBlobLen = uint64(100 << 10)
 
+var SyzLLMProbabilityFuzzer = 1.0
+var MutationSelectionRand = rand.New(rand.NewSource(time.Now().UnixNano()))
+
 // Mutate program p.
 //
 // p:           The program to mutate.
@@ -53,10 +56,10 @@ func (p *Prog) Mutate(rs rand.Source, ncalls int, ct *ChoiceTable, noMutate map[
 			ok = ctx.splice()
 		case r.nOutOf(20, 31):
 			//ok = ctx.insertCall()
-			if len(p.Calls) < 6 {
-				ok = ctx.insertCall()
-			} else {
+			if len(p.Calls) >= 6 && MutationSelectionRand.Float64() < SyzLLMProbabilityFuzzer {
 				ok = ctx.insertCall_SyzLLM()
+			} else {
+				ok = ctx.insertCall()
 			}
 		case r.nOutOf(10, 11):
 			ok = ctx.mutateArg()
