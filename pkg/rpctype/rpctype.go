@@ -201,6 +201,8 @@ type RunTestDoneArgs struct {
 	Error  string
 }
 
+type SyzLLMProbabilityArg struct{}
+
 type SyzLLMProbabilityRes struct {
 	Prob float64
 }

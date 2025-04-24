@@ -464,8 +464,9 @@ func (fuzzer *Fuzzer) poll(needCandidates bool, stats map[string]uint64) bool {
 }
 
 func (fuzzer *Fuzzer) GetSyzLLMProbability() {
+	a := &rpctype.SyzLLMProbabilityArg{}
 	r := &rpctype.SyzLLMProbabilityRes{}
-	if err := fuzzer.manager.Call("Manager.GetSyzLLMProbability", nil, r); err != nil {
+	if err := fuzzer.manager.Call("Manager.GetSyzLLMProbability", a, r); err != nil {
 		log.SyzFatalf("Manager.GetSyzLLMProbability call failed: %v", err)
 	}
 	prog.SyzLLMProbabilityFuzzer = r.Prob

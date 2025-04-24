@@ -397,7 +397,7 @@ func (serv *RPCServer) shutdownInstance(name string) []byte {
 	return fuzzer.machineInfo
 }
 
-func (serv *RPCServer) GetSyzLLMProbability(a *int, r *rpctype.SyzLLMProbabilityRes) error {
+func (serv *RPCServer) GetSyzLLMProbability(a *rpctype.SyzLLMProbabilityArg, r *rpctype.SyzLLMProbabilityRes) error {
 	r.Prob = SyzLLMProbabilityManager
 	return nil
 }
