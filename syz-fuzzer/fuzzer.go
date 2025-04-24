@@ -352,14 +352,7 @@ func (fuzzer *Fuzzer) useBugFrames(r *rpctype.ConnectRes, flagProcs int) func() 
 }
 
 func (fuzzer *Fuzzer) startTickerForSyzLLMProb() {
-	go func() {
-		ticker := time.NewTicker(1 * time.Minute)
-		defer ticker.Stop()
-
-		for range ticker.C {
-			fuzzer.GetSyzLLMProbability()
-		}
-	}()
+	fuzzer.GetSyzLLMProbability()
 }
 
 func (fuzzer *Fuzzer) gateCallback(leakFrames []string) {
