@@ -302,7 +302,7 @@ func main() {
 		fuzzer.execOpts.Flags |= ipc.FlagEnableCoverageFilter
 	}
 
-	fuzzer.startTickerForSyzLLMProb()
+	fuzzer.GetSyzLLMProbability()
 	//dummyProg := prog.Prog{
 	//	Target:   target,
 	//	Calls:    make([]*prog.Call, 0),
@@ -349,10 +349,6 @@ func (fuzzer *Fuzzer) useBugFrames(r *rpctype.ConnectRes, flagProcs int) func() 
 	}
 
 	return gateCallback
-}
-
-func (fuzzer *Fuzzer) startTickerForSyzLLMProb() {
-	fuzzer.GetSyzLLMProbability()
 }
 
 func (fuzzer *Fuzzer) gateCallback(leakFrames []string) {
